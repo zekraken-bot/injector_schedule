@@ -1,5 +1,6 @@
 import "./App.css";
 import React, { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { ethers } from "ethers";
 import { InjectorABI } from "./abi/Injector";
 import { ERC20 } from "./abi/erc20";
@@ -12,6 +13,10 @@ function App() {
   const [jsonAddresses, setJsonAddresses] = useState([]);
   const [dropdownSelection, setDropdownSelection] = useState("");
   const [selectedNetwork, setSelectedNetwork] = useState("");
+
+  const params = useParams();
+  const urlNetwork = params.network;
+  const urlAddress = params.address;
 
   const networkChoice = {
     mainnet: "https://ethereum.publicnode.com",
@@ -73,6 +78,15 @@ function App() {
   };
 
   useEffect(() => {
+    if (urlNetwork && urlAddress) {
+      const selectionValue = `${urlNetwork}-${urlAddress}`;
+      setDropdownSelection(selectionValue);
+      handleAddressSelect({ target: { value: selectionValue } });
+    }
+    // eslint-disable-next-line
+  }, [urlNetwork, urlAddress]);
+
+  useEffect(() => {
     fetch("https://raw.githubusercontent.com/BalancerMaxis/bal_addresses/main/outputs/addressbook.json")
       .then((response) => response.json())
       .then((data) => {
@@ -100,6 +114,7 @@ function App() {
       getWatchList();
       getInjectTokenBalanceForAddress();
     }
+    // eslint-disable-next-line
   }, [contractAddress, selectedNetwork]);
 
   const totalProduct = addresses.reduce((sum, address) => {
@@ -142,9 +157,9 @@ function App() {
                 <th>Is Active</th>
                 <th>Max Periods</th>
                 <th>Period Number</th>
-                <th>Last Injection Time</th>
-                <th>Last Injection Converted Time</th>
-                <th>Future Date</th>
+                <th>Last Injection Date</th>
+                <th>Last Injection Converted Date</th>
+                <th>Next Injection Date</th>
               </tr>
             </thead>
             <tbody>
