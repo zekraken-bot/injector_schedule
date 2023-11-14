@@ -13,10 +13,21 @@ function App() {
   const [jsonAddresses, setJsonAddresses] = useState([]);
   const [dropdownSelection, setDropdownSelection] = useState("");
   const [selectedNetwork, setSelectedNetwork] = useState("");
+  const [injectTokenAddress, setInjectTokenAddress] = useState("");
 
   const params = useParams();
   const urlNetwork = params.network;
   const urlAddress = params.address;
+
+  const tokenDecimals = {
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6, // mainnet
+    "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": 6, // polygon
+    "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6, // arbitrum
+    "0xddafbb505ad214d7b80b1f830fccc89b60fb7a83": 6, // gnosis
+    "0xa8ce8aee21bc2a48a5ef670afcc9274c7bbbc035": 6, // zkevm
+    "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": 6, // avalanche
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": 6, // base
+  };
 
   const networkChoice = {
     mainnet: "https://ethereum.publicnode.com",
@@ -54,9 +65,11 @@ function App() {
 
   async function getInjectTokenBalanceForAddress() {
     const injectTokenAddress = await contract.getInjectTokenAddress();
+    setInjectTokenAddress(injectTokenAddress);
     const tokenContract = new ethers.Contract(injectTokenAddress, ERC20, provider);
     const balanceForAddress = await tokenContract.balanceOf(contractAddress);
-    setContractBalance(ethers.utils.formatUnits(balanceForAddress, 18));
+    const decimals = tokenDecimals[injectTokenAddress.toLowerCase()] || 18;
+    setContractBalance(ethers.utils.formatUnits(balanceForAddress, decimals));
   }
 
   const handleAddressSelect = (event) => {
@@ -64,7 +77,7 @@ function App() {
     setDropdownSelection(fullSelection);
 
     const [network, address] = fullSelection.split("-");
-    setSelectedNetwork(network); // Set the selected network
+    setSelectedNetwork(network);
 
     const providerUrl = networkChoice[network.toLowerCase()];
     if (providerUrl) {
@@ -117,16 +130,27 @@ function App() {
     // eslint-disable-next-line
   }, [contractAddress, selectedNetwork]);
 
+  function formatTokenAmount(amount, tokenAddress) {
+    if (amount === null || amount === undefined) return "Loading...";
+
+    const formattedAmount = ethers.BigNumber.isBigNumber(amount) ? amount : ethers.BigNumber.from(amount.toString());
+    const decimals = tokenDecimals[tokenAddress.toLowerCase()] || 18;
+
+    return ethers.utils.formatUnits(formattedAmount, decimals);
+  }
+
   const totalProduct = addresses.reduce((sum, address) => {
     const amountPerPeriod = accountInfo[address]?.amountPerPeriod || 0;
     const maxPeriods = accountInfo[address]?.maxPeriods || 0;
-    return sum + (amountPerPeriod / 10 ** 18) * maxPeriods;
+    const formattedAmountPerPeriod = parseFloat(formatTokenAmount(amountPerPeriod, injectTokenAddress));
+    return sum + formattedAmountPerPeriod * maxPeriods;
   }, 0);
 
   const totalAmountDistributed = addresses.reduce((sum, address) => {
     const amountPerPeriod = accountInfo[address]?.amountPerPeriod || 0;
     const periodNumber = accountInfo[address]?.periodNumber || 0;
-    return sum + (amountPerPeriod / 10 ** 18) * periodNumber;
+    const formattedAmountPerPeriod = parseFloat(formatTokenAmount(amountPerPeriod, injectTokenAddress));
+    return sum + formattedAmountPerPeriod * periodNumber;
   }, 0);
 
   return (
@@ -147,7 +171,6 @@ function App() {
         <h1>Watch List Results</h1>
       </header>
       <main>
-        {/* Conditionally render the table based on whether an address is selected */}
         {contractAddress && addresses.length > 0 ? (
           <table className="bordered-table">
             <thead>
@@ -166,7 +189,7 @@ function App() {
               {addresses.map((address, index) => (
                 <tr key={index}>
                   <td>{address}</td>
-                  <td>{accountInfo[address]?.amountPerPeriod / 10 ** 18 || "Loading..."}</td>
+                  <td>{formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress)}</td>
                   <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.maxPeriods.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
@@ -184,9 +207,9 @@ function App() {
         ) : (
           <p>No addresses found in the watchlist.</p>
         )}
-        <p>Total Amount to be Distributed: {totalProduct.toLocaleString("en-US", { useGrouping: false })}</p>
+        <p>Total Amount to be Distributed: {totalProduct}</p>
         <br />
-        <p>Total Amount Distributed: {totalAmountDistributed.toLocaleString("en-US", { useGrouping: false })}</p>
+        <p>Total Amount Distributed: {totalAmountDistributed}</p>
         <br />
         <p>Remaining Inject Token: {contractBalance}</p>
       </main>
