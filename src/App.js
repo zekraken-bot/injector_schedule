@@ -10,7 +10,7 @@ import { gaugeABI } from "./abi/gauge";
 function App() {
   const [addresses, setAddresses] = useState([]);
   const [accountInfo, setAccountInfo] = useState({});
-  const [contractBalance, setContractBalance] = useState("");
+  const [contractBalance, setContractBalance] = useState(0);
   const [contractAddress, setContractAddress] = useState("");
   const [jsonAddresses, setJsonAddresses] = useState([]);
   const [dropdownSelection, setDropdownSelection] = useState("");
@@ -29,7 +29,8 @@ function App() {
     "0xddafbb505ad214d7b80b1f830fccc89b60fb7a83": 6, // gnosis
     "0xa8ce8aee21bc2a48a5ef670afcc9274c7bbbc035": 6, // zkevm
     "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": 6, // avalanche
-    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": 6, // base
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6, // base
+    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": 6, // base USDbC
   };
 
   const networkChoice = {
@@ -178,6 +179,12 @@ function App() {
     return sum + formattedAmountPerPeriod * periodNumber;
   }, 0);
 
+  const totalAmountRemaining = addresses.reduce((sum, address) => {
+    return totalProduct - totalAmountDistributed;
+  }, 0);
+
+  const additionalTokensRequired = totalAmountRemaining > contractBalance ? totalAmountRemaining - contractBalance : 0;
+
   return (
     <div className="App">
       <header className="App-header">
@@ -242,11 +249,29 @@ function App() {
         ) : (
           <p>No addresses found in the watchlist.</p>
         )}
-        <p>Total Amount to be Distributed: {totalProduct}</p>
         <br />
-        <p>Total Amount Distributed: {totalAmountDistributed}</p>
+        <p>Total amount to be distributed in program: {totalProduct}</p>
         <br />
-        <p>Remaining Inject Token: {contractBalance}</p>
+        <p>Total amount distributed thus far: {totalAmountDistributed}</p>
+        <br />
+        <p>Remaining amount to be distributed: {totalAmountRemaining}</p>
+        <br />
+        <p>Remaining amount of inject token: {contractBalance}</p>
+        <br />
+        {additionalTokensRequired > 0 && (
+          <div className="warning">
+            <p>
+              Warning: This program needs an additional {additionalTokensRequired} tokens to run to completion. They can be transferred here: [{selectedNetwork}:{contractAddress}]
+            </p>
+            <br />
+          </div>
+        )}
+        <p>
+          A direct link to this page:{"\u00A0\u00A0"}
+          <a href={`https://injector-schedule.web.app/${selectedNetwork}/${contractAddress}`} target="_self">
+            https://injector-schedule.web.app/{selectedNetwork}/{contractAddress}
+          </a>
+        </p>
       </main>
     </div>
   );
