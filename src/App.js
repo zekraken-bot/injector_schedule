@@ -4,6 +4,8 @@ import { useParams } from "react-router-dom";
 import { ethers } from "ethers";
 import { InjectorABI } from "./abi/Injector";
 import { ERC20 } from "./abi/erc20";
+import { poolsABI } from "./abi/pools";
+import { gaugeABI } from "./abi/gauge";
 
 function App() {
   const [addresses, setAddresses] = useState([]);
@@ -14,6 +16,7 @@ function App() {
   const [dropdownSelection, setDropdownSelection] = useState("");
   const [selectedNetwork, setSelectedNetwork] = useState("");
   const [injectTokenAddress, setInjectTokenAddress] = useState("");
+  const [poolNames, setPoolNames] = useState({});
 
   const params = useParams();
   const urlNetwork = params.network;
@@ -42,6 +45,19 @@ function App() {
   const [provider, setProvider] = useState(new ethers.providers.JsonRpcProvider(networkChoice.mainnet));
   const [contract, setContract] = useState(new ethers.Contract(contractAddress, InjectorABI, provider));
 
+  async function fetchPoolName(address) {
+    try {
+      const lpTokenContract = new ethers.Contract(address, gaugeABI, provider);
+      const lpTokenAddress = await lpTokenContract.lp_token();
+      const tokenContract = new ethers.Contract(lpTokenAddress, poolsABI, provider);
+      const poolName = await tokenContract.name();
+      return poolName;
+    } catch (error) {
+      console.error(`Error fetching pool name for address ${address}:`, error);
+      return "Unknown Pool";
+    }
+  }
+
   async function getAccountInfoForAddress(address) {
     try {
       const result = await contract.getAccountInfo(address);
@@ -55,6 +71,15 @@ function App() {
     try {
       const result = await contract.getWatchList();
       setAddresses(result);
+      const newPoolNames = {};
+
+      for (const address of result) {
+        const poolName = await fetchPoolName(address);
+        newPoolNames[address] = poolName;
+      }
+
+      setPoolNames(newPoolNames);
+
       result.forEach((address) => {
         getAccountInfoForAddress(address);
       });
@@ -176,28 +201,38 @@ function App() {
             <thead>
               <tr>
                 <th>Address</th>
+                <th>Pool Name</th>
                 <th>Amount Per Period</th>
                 <th>Is Active</th>
                 <th>Max Periods</th>
                 <th>Period Number</th>
+                <th>Last Injection Timestamp</th>
                 <th>Last Injection Date</th>
-                <th>Last Injection Converted Date</th>
                 <th>Next Injection Date</th>
+                <th>Program End Date</th>
               </tr>
             </thead>
             <tbody>
               {addresses.map((address, index) => (
                 <tr key={index}>
                   <td>{address}</td>
+                  <td>{poolNames[address] || "Loading..."}</td>
                   <td>{formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress)}</td>
                   <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.maxPeriods.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.lastInjectionTimeStamp.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.lastInjectionTimeStamp ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toUTCString() : "Loading..."}</td>
+                  <td>{accountInfo[address]?.lastInjectionTimeStamp ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString() : "Loading..."}</td>
                   <td>
                     {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * 24 * 3600 * 1000).toUTCString()
+                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * 24 * 3600 * 1000).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  <td>
+                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
+                      ? new Date(
+                          accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
+                        ).toLocaleDateString()
                       : "N/A"}
                   </td>
                 </tr>
