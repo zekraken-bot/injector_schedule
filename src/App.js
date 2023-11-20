@@ -17,6 +17,7 @@ function App() {
   const [selectedNetwork, setSelectedNetwork] = useState("");
   const [injectTokenAddress, setInjectTokenAddress] = useState("");
   const [poolNames, setPoolNames] = useState({});
+  const [periodFinishTimestamps, setPeriodFinishTimestamps] = useState({});
 
   const params = useParams();
   const urlNetwork = params.network;
@@ -46,6 +47,18 @@ function App() {
   const [provider, setProvider] = useState(new ethers.providers.JsonRpcProvider(networkChoice.mainnet));
   const [contract, setContract] = useState(new ethers.Contract(contractAddress, InjectorABI, provider));
 
+  async function fetchPeriodFinish(address) {
+    try {
+      const gaugeContract = new ethers.Contract(address, gaugeABI, provider);
+      const rewardData = await gaugeContract.reward_data(injectTokenAddress);
+      const periodFinish = rewardData.period_finish;
+      return periodFinish;
+    } catch (error) {
+      console.error(`Error fetching period finish for address ${address}:`, error);
+      return 0;
+    }
+  }
+
   async function fetchPoolName(address) {
     try {
       const lpTokenContract = new ethers.Contract(address, gaugeABI, provider);
@@ -63,6 +76,11 @@ function App() {
     try {
       const result = await contract.getAccountInfo(address);
       setAccountInfo((prevInfo) => ({ ...prevInfo, [address]: result }));
+
+      if (result.lastInjectionTimeStamp.toNumber() === 0) {
+        const periodFinish = await fetchPeriodFinish(address);
+        setPeriodFinishTimestamps((prevTimestamps) => ({ ...prevTimestamps, [address]: periodFinish }));
+      }
     } catch (error) {
       console.error(`Error fetching info for address ${address}:`, error);
     }
@@ -154,7 +172,7 @@ function App() {
       getInjectTokenBalanceForAddress();
     }
     // eslint-disable-next-line
-  }, [contractAddress, selectedNetwork]);
+  }, [contractAddress, selectedNetwork, injectTokenAddress]);
 
   function formatTokenAmount(amount, tokenAddress) {
     if (amount === null || amount === undefined) return "Loading...";
@@ -213,7 +231,6 @@ function App() {
                 <th>Is Active</th>
                 <th>Max Periods</th>
                 <th>Period Number</th>
-                <th>Last Injection Timestamp</th>
                 <th>Last Injection Date</th>
                 <th>Next Injection Date</th>
                 <th>Program End Date</th>
@@ -228,17 +245,26 @@ function App() {
                   <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.maxPeriods.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.lastInjectionTimeStamp.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.lastInjectionTimeStamp ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString() : "Loading..."}</td>
                   <td>
-                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * 24 * 3600 * 1000).toLocaleDateString()
+                    {accountInfo[address]?.lastInjectionTimeStamp > 0
+                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
+                      : periodFinishTimestamps[address]
+                      ? new Date(periodFinishTimestamps[address] * 1000).toLocaleDateString()
                       : "N/A"}
                   </td>
                   <td>
                     {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
                       ? new Date(
-                          accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
+                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                            7 * 24 * 3600 * 1000
+                        ).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  <td>
+                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
+                      ? new Date(
+                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                            7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
                         ).toLocaleDateString()
                       : "N/A"}
                   </td>
