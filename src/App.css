@@ -17,3 +17,9 @@ html, body {
   border: 1px solid #000;
   padding: 8px;
 }
+
+.warning {
+  color: rgb(163, 0, 0);
+  font-weight: bold;
+  /* other styles as needed */
+}

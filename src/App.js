@@ -4,19 +4,35 @@ import { useParams } from "react-router-dom";
 import { ethers } from "ethers";
 import { InjectorABI } from "./abi/Injector";
 import { ERC20 } from "./abi/erc20";
+import { poolsABI } from "./abi/pools";
+import { gaugeABI } from "./abi/gauge";
 
 function App() {
   const [addresses, setAddresses] = useState([]);
   const [accountInfo, setAccountInfo] = useState({});
-  const [contractBalance, setContractBalance] = useState("");
+  const [contractBalance, setContractBalance] = useState(0);
   const [contractAddress, setContractAddress] = useState("");
   const [jsonAddresses, setJsonAddresses] = useState([]);
   const [dropdownSelection, setDropdownSelection] = useState("");
   const [selectedNetwork, setSelectedNetwork] = useState("");
+  const [injectTokenAddress, setInjectTokenAddress] = useState("");
+  const [poolNames, setPoolNames] = useState({});
+  const [periodFinishTimestamps, setPeriodFinishTimestamps] = useState({});
 
   const params = useParams();
   const urlNetwork = params.network;
   const urlAddress = params.address;
+
+  const tokenDecimals = {
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6, // mainnet
+    "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": 6, // polygon
+    "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6, // arbitrum
+    "0xddafbb505ad214d7b80b1f830fccc89b60fb7a83": 6, // gnosis
+    "0xa8ce8aee21bc2a48a5ef670afcc9274c7bbbc035": 6, // zkevm
+    "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": 6, // avalanche
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6, // base
+    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": 6, // base USDbC
+  };
 
   const networkChoice = {
     mainnet: "https://ethereum.publicnode.com",
@@ -31,10 +47,40 @@ function App() {
   const [provider, setProvider] = useState(new ethers.providers.JsonRpcProvider(networkChoice.mainnet));
   const [contract, setContract] = useState(new ethers.Contract(contractAddress, InjectorABI, provider));
 
+  async function fetchPeriodFinish(address) {
+    try {
+      const gaugeContract = new ethers.Contract(address, gaugeABI, provider);
+      const rewardData = await gaugeContract.reward_data(injectTokenAddress);
+      const periodFinish = rewardData.period_finish;
+      return periodFinish;
+    } catch (error) {
+      console.error(`Error fetching period finish for address ${address}:`, error);
+      return 0;
+    }
+  }
+
+  async function fetchPoolName(address) {
+    try {
+      const lpTokenContract = new ethers.Contract(address, gaugeABI, provider);
+      const lpTokenAddress = await lpTokenContract.lp_token();
+      const tokenContract = new ethers.Contract(lpTokenAddress, poolsABI, provider);
+      const poolName = await tokenContract.name();
+      return poolName;
+    } catch (error) {
+      console.error(`Error fetching pool name for address ${address}:`, error);
+      return "Unknown Pool";
+    }
+  }
+
   async function getAccountInfoForAddress(address) {
     try {
       const result = await contract.getAccountInfo(address);
       setAccountInfo((prevInfo) => ({ ...prevInfo, [address]: result }));
+
+      if (result.lastInjectionTimeStamp.toNumber() === 0) {
+        const periodFinish = await fetchPeriodFinish(address);
+        setPeriodFinishTimestamps((prevTimestamps) => ({ ...prevTimestamps, [address]: periodFinish }));
+      }
     } catch (error) {
       console.error(`Error fetching info for address ${address}:`, error);
     }
@@ -44,6 +90,15 @@ function App() {
     try {
       const result = await contract.getWatchList();
       setAddresses(result);
+      const newPoolNames = {};
+
+      for (const address of result) {
+        const poolName = await fetchPoolName(address);
+        newPoolNames[address] = poolName;
+      }
+
+      setPoolNames(newPoolNames);
+
       result.forEach((address) => {
         getAccountInfoForAddress(address);
       });
@@ -54,9 +109,11 @@ function App() {
 
   async function getInjectTokenBalanceForAddress() {
     const injectTokenAddress = await contract.getInjectTokenAddress();
+    setInjectTokenAddress(injectTokenAddress);
     const tokenContract = new ethers.Contract(injectTokenAddress, ERC20, provider);
     const balanceForAddress = await tokenContract.balanceOf(contractAddress);
-    setContractBalance(ethers.utils.formatUnits(balanceForAddress, 18));
+    const decimals = tokenDecimals[injectTokenAddress.toLowerCase()] || 18;
+    setContractBalance(ethers.utils.formatUnits(balanceForAddress, decimals));
   }
 
   const handleAddressSelect = (event) => {
@@ -64,7 +121,7 @@ function App() {
     setDropdownSelection(fullSelection);
 
     const [network, address] = fullSelection.split("-");
-    setSelectedNetwork(network); // Set the selected network
+    setSelectedNetwork(network);
 
     const providerUrl = networkChoice[network.toLowerCase()];
     if (providerUrl) {
@@ -115,19 +172,36 @@ function App() {
       getInjectTokenBalanceForAddress();
     }
     // eslint-disable-next-line
-  }, [contractAddress, selectedNetwork]);
+  }, [contractAddress, selectedNetwork, injectTokenAddress]);
+
+  function formatTokenAmount(amount, tokenAddress) {
+    if (amount === null || amount === undefined) return "Loading...";
+
+    const formattedAmount = ethers.BigNumber.isBigNumber(amount) ? amount : ethers.BigNumber.from(amount.toString());
+    const decimals = tokenDecimals[tokenAddress.toLowerCase()] || 18;
+
+    return ethers.utils.formatUnits(formattedAmount, decimals);
+  }
 
   const totalProduct = addresses.reduce((sum, address) => {
     const amountPerPeriod = accountInfo[address]?.amountPerPeriod || 0;
     const maxPeriods = accountInfo[address]?.maxPeriods || 0;
-    return sum + (amountPerPeriod / 10 ** 18) * maxPeriods;
+    const formattedAmountPerPeriod = parseFloat(formatTokenAmount(amountPerPeriod, injectTokenAddress));
+    return sum + formattedAmountPerPeriod * maxPeriods;
   }, 0);
 
   const totalAmountDistributed = addresses.reduce((sum, address) => {
     const amountPerPeriod = accountInfo[address]?.amountPerPeriod || 0;
     const periodNumber = accountInfo[address]?.periodNumber || 0;
-    return sum + (amountPerPeriod / 10 ** 18) * periodNumber;
+    const formattedAmountPerPeriod = parseFloat(formatTokenAmount(amountPerPeriod, injectTokenAddress));
+    return sum + formattedAmountPerPeriod * periodNumber;
   }, 0);
+
+  const totalAmountRemaining = addresses.reduce((sum, address) => {
+    return totalProduct - totalAmountDistributed;
+  }, 0);
+
+  const additionalTokensRequired = totalAmountRemaining > contractBalance ? totalAmountRemaining - contractBalance : 0;
 
   return (
     <div className="App">
@@ -147,34 +221,51 @@ function App() {
         <h1>Watch List Results</h1>
       </header>
       <main>
-        {/* Conditionally render the table based on whether an address is selected */}
         {contractAddress && addresses.length > 0 ? (
           <table className="bordered-table">
             <thead>
               <tr>
                 <th>Address</th>
+                <th>Pool Name</th>
                 <th>Amount Per Period</th>
                 <th>Is Active</th>
                 <th>Max Periods</th>
                 <th>Period Number</th>
                 <th>Last Injection Date</th>
-                <th>Last Injection Converted Date</th>
                 <th>Next Injection Date</th>
+                <th>Program End Date</th>
               </tr>
             </thead>
             <tbody>
               {addresses.map((address, index) => (
                 <tr key={index}>
                   <td>{address}</td>
-                  <td>{accountInfo[address]?.amountPerPeriod / 10 ** 18 || "Loading..."}</td>
+                  <td>{poolNames[address] || "Loading..."}</td>
+                  <td>{formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress)}</td>
                   <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.maxPeriods.toString() || "Loading..."}</td>
                   <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.lastInjectionTimeStamp.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.lastInjectionTimeStamp ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toUTCString() : "Loading..."}</td>
+                  <td>
+                    {accountInfo[address]?.lastInjectionTimeStamp > 0
+                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
+                      : periodFinishTimestamps[address]
+                      ? new Date(periodFinishTimestamps[address] * 1000).toLocaleDateString()
+                      : "N/A"}
+                  </td>
                   <td>
                     {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000 + 7 * 24 * 3600 * 1000).toUTCString()
+                      ? new Date(
+                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                            7 * 24 * 3600 * 1000
+                        ).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  <td>
+                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
+                      ? new Date(
+                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                            7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
+                        ).toLocaleDateString()
                       : "N/A"}
                   </td>
                 </tr>
@@ -184,11 +275,29 @@ function App() {
         ) : (
           <p>No addresses found in the watchlist.</p>
         )}
-        <p>Total Amount to be Distributed: {totalProduct.toLocaleString("en-US", { useGrouping: false })}</p>
         <br />
-        <p>Total Amount Distributed: {totalAmountDistributed.toLocaleString("en-US", { useGrouping: false })}</p>
+        <p>Total amount to be distributed in program: {totalProduct}</p>
         <br />
-        <p>Remaining Inject Token: {contractBalance}</p>
+        <p>Total amount distributed thus far: {totalAmountDistributed}</p>
+        <br />
+        <p>Remaining amount to be distributed: {totalAmountRemaining}</p>
+        <br />
+        <p>Remaining amount of inject token: {contractBalance}</p>
+        <br />
+        {additionalTokensRequired > 0 && (
+          <div className="warning">
+            <p>
+              Warning: This program needs an additional {additionalTokensRequired} tokens to run to completion. They can be transferred here: [{selectedNetwork}:{contractAddress}]
+            </p>
+            <br />
+          </div>
+        )}
+        <p>
+          A direct link to this page:{"\u00A0\u00A0"}
+          <a href={`https://injector-schedule.web.app/${selectedNetwork}/${contractAddress}`} target="_self">
+            https://injector-schedule.web.app/{selectedNetwork}/{contractAddress}
+          </a>
+        </p>
       </main>
     </div>
   );
