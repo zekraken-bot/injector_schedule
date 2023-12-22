@@ -155,7 +155,7 @@ function App() {
       ...prevData,
       [address]: {
         ...prevData[address],
-        [field]: value,
+        [field]: field === "maxPeriods" ? parseInt(value) : value, // Ensure it's an integer for "maxPeriods"
       },
     }));
   }
@@ -364,11 +364,7 @@ function App() {
                     <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                     <td>
                       {isEditMode ? (
-                        <input
-                          type="number"
-                          value={currentData.editableMaxPeriods}
-                          onChange={(e) => updateEditableData(address, "maxPeriods", parseInt(e.target.value) + (accountInfo[address]?.periodNumber || 0))}
-                        />
+                        <input type="number" value={currentData.editableMaxPeriods} onChange={(e) => updateEditableData(address, "maxPeriods", e.target.value)} />
                       ) : (
                         currentData.maxPeriods || "Loading..."
                       )}
