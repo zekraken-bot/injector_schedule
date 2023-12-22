@@ -18,6 +18,9 @@ function App() {
   const [injectTokenAddress, setInjectTokenAddress] = useState("");
   const [poolNames, setPoolNames] = useState({});
   const [periodFinishTimestamps, setPeriodFinishTimestamps] = useState({});
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editableData, setEditableData] = useState({});
+  const [generatedJson, setGeneratedJson] = useState(null);
 
   const params = useParams();
   const urlNetwork = params.network;
@@ -42,6 +45,16 @@ function App() {
     zkevm: "https://zkevm-rpc.com",
     avalanche: "https://avalanche.public-rpc.com",
     base: "https://developer-access-mainnet.base.org",
+  };
+
+  const chainIds = {
+    mainnet: "1",
+    polygon: "137",
+    arbitrum: "42161",
+    gnosis: "100",
+    zkevm: "1101",
+    avalanche: "43114",
+    base: "8453",
   };
 
   const [provider, setProvider] = useState(new ethers.providers.JsonRpcProvider(networkChoice.mainnet));
@@ -131,8 +144,76 @@ function App() {
       setContractAddress(address);
       setProvider(newProvider);
       setContract(newContract);
+
+      setGeneratedJson(null);
+      setEditableData({});
     }
   };
+
+  function updateEditableData(address, field, value) {
+    setEditableData((prevData) => ({
+      ...prevData,
+      [address]: {
+        ...prevData[address],
+        [field]: value,
+      },
+    }));
+  }
+
+  function generateJsonOutput() {
+    const gaugeAddresses = Object.keys(editableData);
+    const amountsPerPeriod = gaugeAddresses.map((address) => {
+      return convertToBaseUnit(editableData[address].amountPerPeriod, injectTokenAddress);
+    });
+    const maxPeriods = gaugeAddresses.map((address) => editableData[address].maxPeriods);
+    const currentChainId = chainIds[selectedNetwork];
+
+    const jsonData = {
+      version: "1.0",
+      chainId: currentChainId,
+      createdAt: Date.now(),
+      meta: {
+        name: "Transactions Batch",
+        description: "Child Chain Injector Program Load",
+        txBuilderVersion: "1.16.3",
+      },
+      transactions: [
+        {
+          to: contractAddress,
+          value: "0",
+          data: null,
+          contractMethod: {
+            inputs: [
+              {
+                name: "gaugeAddresses",
+                type: "address[]",
+                internalType: "address[]",
+              },
+              {
+                name: "amountsPerPeriod",
+                type: "uint256[]",
+                internalType: "uint256[]",
+              },
+              {
+                name: "maxPeriods",
+                type: "uint8[]",
+                internalType: "uint8[]",
+              },
+            ],
+            name: "setRecipientList",
+            payable: false,
+          },
+          contractInputsValues: {
+            gaugeAddresses: gaugeAddresses,
+            amountsPerPeriod: amountsPerPeriod,
+            maxPeriods: maxPeriods,
+          },
+        },
+      ],
+    };
+
+    setGeneratedJson(JSON.stringify(jsonData, null, 2));
+  }
 
   useEffect(() => {
     if (urlNetwork && urlAddress) {
@@ -174,6 +255,12 @@ function App() {
     // eslint-disable-next-line
   }, [contractAddress, selectedNetwork, injectTokenAddress]);
 
+  useEffect(() => {
+    if (!isEditMode && Object.keys(editableData).length > 0) {
+      generateJsonOutput();
+    }
+  }, [isEditMode, editableData]);
+
   function formatTokenAmount(amount, tokenAddress) {
     if (amount === null || amount === undefined) return "Loading...";
 
@@ -181,6 +268,22 @@ function App() {
     const decimals = tokenDecimals[tokenAddress.toLowerCase()] || 18;
 
     return ethers.utils.formatUnits(formattedAmount, decimals);
+  }
+
+  function convertToBaseUnit(amount, tokenAddress) {
+    const decimals = tokenDecimals[tokenAddress.toLowerCase()] || 18;
+    return ethers.utils.parseUnits(amount.toString(), decimals).toString();
+  }
+
+  function downloadJsonFile() {
+    const blob = new Blob([generatedJson], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = "data.json"; // or any other filename you wish
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   const totalProduct = addresses.reduce((sum, address) => {
@@ -217,6 +320,8 @@ function App() {
               </option>
             ))}
           </select>
+          {"\u00A0\u00A0\u00A0"}
+          <button onClick={() => setIsEditMode(!isEditMode)}>{isEditMode ? "Save" : "Edit"}</button>
         </div>
         <h1>Watch List Results</h1>
       </header>
@@ -237,39 +342,57 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {addresses.map((address, index) => (
-                <tr key={index}>
-                  <td>{address}</td>
-                  <td>{poolNames[address] || "Loading..."}</td>
-                  <td>{formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress)}</td>
-                  <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.maxPeriods.toString() || "Loading..."}</td>
-                  <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
-                  <td>
-                    {accountInfo[address]?.lastInjectionTimeStamp > 0
-                      ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
-                      : periodFinishTimestamps[address]
-                      ? new Date(periodFinishTimestamps[address] * 1000).toLocaleDateString()
-                      : "N/A"}
-                  </td>
-                  <td>
-                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                      ? new Date(
-                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
-                            7 * 24 * 3600 * 1000
-                        ).toLocaleDateString()
-                      : "N/A"}
-                  </td>
-                  <td>
-                    {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                      ? new Date(
-                          (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
-                            7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
-                        ).toLocaleDateString()
-                      : "N/A"}
-                  </td>
-                </tr>
-              ))}
+              {addresses.map((address, index) => {
+                const currentData = editableData[address] || {
+                  amountPerPeriod: formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress),
+                  maxPeriods: accountInfo[address]?.maxPeriods.toString(),
+                };
+                return (
+                  <tr key={index}>
+                    <td>{address}</td>
+                    <td>{poolNames[address] || "Loading..."}</td>
+                    <td>
+                      {isEditMode ? (
+                        <input type="number" value={currentData.amountPerPeriod} onChange={(e) => updateEditableData(address, "amountPerPeriod", e.target.value)} />
+                      ) : (
+                        currentData.amountPerPeriod || "Loading..."
+                      )}
+                    </td>
+                    <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
+                    <td>
+                      {isEditMode ? (
+                        <input type="number" value={currentData.maxPeriods} onChange={(e) => updateEditableData(address, "maxPeriods", e.target.value)} />
+                      ) : (
+                        currentData.maxPeriods || "Loading..."
+                      )}
+                    </td>
+                    <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
+                    <td>
+                      {accountInfo[address]?.lastInjectionTimeStamp > 0
+                        ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
+                        : periodFinishTimestamps[address]
+                        ? new Date(periodFinishTimestamps[address] * 1000).toLocaleDateString()
+                        : "N/A"}
+                    </td>
+                    <td>
+                      {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
+                        ? new Date(
+                            (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                              7 * 24 * 3600 * 1000
+                          ).toLocaleDateString()
+                        : "N/A"}
+                    </td>
+                    <td>
+                      {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
+                        ? new Date(
+                            (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
+                              7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
+                          ).toLocaleDateString()
+                        : "N/A"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (
@@ -298,7 +421,26 @@ function App() {
             https://injector-schedule.web.app/{selectedNetwork}/{contractAddress}
           </a>
         </p>
+        <button onClick={downloadJsonFile} disabled={!generatedJson}>
+          Download JSON
+        </button>
+        <br />
+        {generatedJson && <pre>{generatedJson}</pre>}
+        <br />
+        <br />
       </main>
+      <footer className="footer">
+        created by&nbsp;
+        <a href="https://twitter.com/The_Krake" target="_blank" rel="noopener noreferrer">
+          @ZeKraken
+        </a>
+        &nbsp;| open source: &nbsp;
+        <a href="https://github.com/zekraken-bot/injector_schedule" target="_blank" rel="noopener noreferrer">
+          github
+        </a>
+        &nbsp;|&nbsp;Disclaimer: use at your discretion, I take no responsiblity for results
+      </footer>
+      <br />
     </div>
   );
 }
