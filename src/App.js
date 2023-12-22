@@ -348,6 +348,7 @@ function App() {
                 const currentData = editableData[address] || {
                   amountPerPeriod: formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress),
                   maxPeriods: accountInfo[address]?.maxPeriods.toString(),
+                  editableMaxPeriods: isEditMode ? (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber).toString() : accountInfo[address]?.maxPeriods.toString(),
                 };
                 return (
                   <tr key={index}>
@@ -363,12 +364,16 @@ function App() {
                     <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
                     <td>
                       {isEditMode ? (
-                        <input type="number" value={currentData.maxPeriods} onChange={(e) => updateEditableData(address, "maxPeriods", e.target.value)} />
+                        <input
+                          type="number"
+                          value={currentData.editableMaxPeriods}
+                          onChange={(e) => updateEditableData(address, "maxPeriods", parseInt(e.target.value) + (accountInfo[address]?.periodNumber || 0))}
+                        />
                       ) : (
                         currentData.maxPeriods || "Loading..."
                       )}
                     </td>
-                    <td>{accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
+                    <td>{isEditMode ? "0" : accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
                     <td>
                       {accountInfo[address]?.lastInjectionTimeStamp > 0
                         ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
