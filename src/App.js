@@ -259,6 +259,8 @@ function App() {
     if (!isEditMode && Object.keys(editableData).length > 0) {
       generateJsonOutput();
     }
+
+    // eslint-disable-next-line
   }, [isEditMode, editableData]);
 
   function formatTokenAmount(amount, tokenAddress) {
