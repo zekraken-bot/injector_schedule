@@ -204,9 +204,9 @@ function App() {
             payable: false,
           },
           contractInputsValues: {
-            gaugeAddresses: gaugeAddresses,
-            amountsPerPeriod: amountsPerPeriod,
-            maxPeriods: maxPeriods,
+            gaugeAddresses: `["${gaugeAddresses.join('","')}"]`,
+            amountsPerPeriod: `["${amountsPerPeriod.join('","')}"]`,
+            maxPeriods: `["${maxPeriods.join('","')}"]`,
           },
         },
       ],
@@ -428,7 +428,7 @@ function App() {
           Download JSON
         </button>
         <br />
-        {generatedJson && <pre>{generatedJson}</pre>}
+        {/*{generatedJson && <pre>{generatedJson}</pre>}*/}
         <br />
         <br />
       </main>
