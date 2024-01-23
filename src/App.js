@@ -88,12 +88,22 @@ function App() {
   async function getAccountInfoForAddress(address) {
     try {
       const result = await contract.getAccountInfo(address);
+      const formattedAmountPerPeriod = formatTokenAmount(result.amountPerPeriod, injectTokenAddress);
+
       setAccountInfo((prevInfo) => ({ ...prevInfo, [address]: result }));
 
-      if (result.lastInjectionTimeStamp.toNumber() === 0) {
-        const periodFinish = await fetchPeriodFinish(address);
-        setPeriodFinishTimestamps((prevTimestamps) => ({ ...prevTimestamps, [address]: periodFinish }));
-      }
+      const periodFinish = await fetchPeriodFinish(address);
+      setPeriodFinishTimestamps((prevTimestamps) => ({ ...prevTimestamps, [address]: periodFinish }));
+
+      setEditableData((prevData) => ({
+        ...prevData,
+        [address]: {
+          ...prevData[address],
+          address: address,
+          amountPerPeriod: formattedAmountPerPeriod,
+          maxPeriods: result.maxPeriods.toString(),
+        },
+      }));
     } catch (error) {
       console.error(`Error fetching info for address ${address}:`, error);
     }
@@ -150,18 +160,43 @@ function App() {
     }
   };
 
-  function updateEditableData(address, field, value) {
+  function updateEditableData(rowId, field, value) {
     setEditableData((prevData) => ({
       ...prevData,
-      [address]: {
-        ...prevData[address],
+      [rowId]: {
+        ...prevData[rowId],
         [field]: field === "maxPeriods" ? parseInt(value) : value, // Ensure it's an integer for "maxPeriods"
       },
     }));
   }
 
+  const handleAddRow = () => {
+    const newRowId = `new-${Date.now()}`;
+    setEditableData((prevData) => ({
+      ...prevData,
+      [newRowId]: {
+        address: "",
+        amountPerPeriod: "0",
+        maxPeriods: "0",
+      },
+    }));
+  };
+
+  const handleDeleteRow = (address) => {
+    setEditableData((prevData) => {
+      const newData = { ...prevData };
+      delete newData[address];
+      return newData;
+    });
+  };
+
   function generateJsonOutput() {
-    const gaugeAddresses = Object.keys(editableData);
+    const gaugeAddresses = Object.entries(editableData)
+      .map(([rowId, data]) => {
+        return rowId.startsWith("new-") ? data.address : rowId;
+      })
+      .filter((address) => address); // Filter out empty or invalid addresses
+
     const amountsPerPeriod = gaugeAddresses.map((address) => {
       return convertToBaseUnit(editableData[address].amountPerPeriod, injectTokenAddress);
     });
@@ -282,7 +317,7 @@ function App() {
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
-    link.download = "data.json"; // or any other filename you wish
+    link.download = "data.json";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -344,63 +379,68 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {addresses.map((address, index) => {
-                const currentData = editableData[address] || {
-                  amountPerPeriod: formatTokenAmount(accountInfo[address]?.amountPerPeriod, injectTokenAddress),
-                  maxPeriods: accountInfo[address]?.maxPeriods.toString(),
-                  editableMaxPeriods: isEditMode ? (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber).toString() : accountInfo[address]?.maxPeriods.toString(),
-                };
-                return (
-                  <tr key={index}>
-                    <td>{address}</td>
-                    <td>{poolNames[address] || "Loading..."}</td>
-                    <td>
-                      {isEditMode ? (
-                        <input type="number" value={currentData.amountPerPeriod} onChange={(e) => updateEditableData(address, "amountPerPeriod", e.target.value)} />
+              {Object.entries(editableData).map(([rowId, data], index) => (
+                <tr key={rowId}>
+                  <td>
+                    {rowId.startsWith("new-") ? (
+                      isEditMode ? (
+                        <input type="text" size="45" value={data.address} onChange={(e) => updateEditableData(rowId, "address", e.target.value)} />
                       ) : (
-                        currentData.amountPerPeriod || "Loading..."
-                      )}
-                    </td>
-                    <td>{accountInfo[address]?.isActive.toString() || "Loading..."}</td>
+                        data.address
+                      )
+                    ) : (
+                      rowId
+                    )}
+                  </td>
+                  <td>{isEditMode && rowId.startsWith("new-") ? data.poolName : poolNames[rowId]}</td>
+                  <td>
+                    {isEditMode ? (
+                      <input type="number" value={data.amountPerPeriod} onChange={(e) => updateEditableData(rowId, "amountPerPeriod", e.target.value)} />
+                    ) : (
+                      data.amountPerPeriod
+                    )}
+                  </td>
+                  <td>{accountInfo[rowId]?.isActive.toString()}</td>
+                  <td>
+                    {isEditMode ? <input type="number" value={data.maxPeriods} onChange={(e) => updateEditableData(rowId, "maxPeriods", e.target.value)} /> : data.maxPeriods}
+                  </td>
+                  <td>{isEditMode ? "0" : accountInfo[rowId]?.periodNumber.toString()}</td>
+                  <td>
+                    {accountInfo[rowId]?.lastInjectionTimeStamp > 0
+                      ? new Date(accountInfo[rowId]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
+                      : periodFinishTimestamps[rowId]
+                      ? new Date(periodFinishTimestamps[rowId] * 1000).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  <td>
+                    {accountInfo[rowId]?.isActive && accountInfo[rowId]?.periodNumber < accountInfo[rowId]?.maxPeriods
+                      ? new Date(
+                          (accountInfo[rowId]?.lastInjectionTimeStamp > 0 ? accountInfo[rowId]?.lastInjectionTimeStamp : periodFinishTimestamps[rowId]) * 1000 +
+                            7 * 24 * 3600 * 1000
+                        ).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  <td>
+                    {accountInfo[rowId]?.isActive && accountInfo[rowId]?.periodNumber < accountInfo[rowId]?.maxPeriods
+                      ? new Date(
+                          (accountInfo[rowId]?.lastInjectionTimeStamp > 0 ? accountInfo[rowId]?.lastInjectionTimeStamp : periodFinishTimestamps[rowId]) * 1000 +
+                            7 * (accountInfo[rowId]?.maxPeriods - accountInfo[rowId]?.periodNumber + 1) * 24 * 3600 * 1000
+                        ).toLocaleDateString()
+                      : "N/A"}
+                  </td>
+                  {isEditMode && (
                     <td>
-                      {isEditMode ? (
-                        <input type="number" value={currentData.editableMaxPeriods} onChange={(e) => updateEditableData(address, "maxPeriods", e.target.value)} />
-                      ) : (
-                        currentData.maxPeriods || "Loading..."
-                      )}
+                      <button onClick={() => handleDeleteRow(rowId)}>Delete</button>
                     </td>
-                    <td>{isEditMode ? "0" : accountInfo[address]?.periodNumber.toString() || "Loading..."}</td>
-                    <td>
-                      {accountInfo[address]?.lastInjectionTimeStamp > 0
-                        ? new Date(accountInfo[address]?.lastInjectionTimeStamp * 1000).toLocaleDateString()
-                        : periodFinishTimestamps[address]
-                        ? new Date(periodFinishTimestamps[address] * 1000).toLocaleDateString()
-                        : "N/A"}
-                    </td>
-                    <td>
-                      {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                        ? new Date(
-                            (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
-                              7 * 24 * 3600 * 1000
-                          ).toLocaleDateString()
-                        : "N/A"}
-                    </td>
-                    <td>
-                      {accountInfo[address]?.isActive && accountInfo[address]?.periodNumber < accountInfo[address]?.maxPeriods
-                        ? new Date(
-                            (accountInfo[address]?.lastInjectionTimeStamp > 0 ? accountInfo[address]?.lastInjectionTimeStamp : periodFinishTimestamps[address]) * 1000 +
-                              7 * (accountInfo[address]?.maxPeriods - accountInfo[address]?.periodNumber + 1) * 24 * 3600 * 1000
-                          ).toLocaleDateString()
-                        : "N/A"}
-                    </td>
-                  </tr>
-                );
-              })}
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
         ) : (
           <p>No addresses found in the watchlist.</p>
         )}
+        {isEditMode && <button onClick={handleAddRow}>Add Row</button>}
         <br />
         <p>Total amount to be distributed in program: {totalProduct}</p>
         <br />
