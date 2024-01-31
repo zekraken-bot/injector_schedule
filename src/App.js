@@ -309,7 +309,8 @@ function App() {
 
   function convertToBaseUnit(amount, tokenAddress) {
     const decimals = tokenDecimals[tokenAddress.toLowerCase()] || 18;
-    return ethers.utils.parseUnits(amount.toString(), decimals).toString();
+    const roundedAmount = Number(amount).toFixed(decimals);
+    return ethers.utils.parseUnits(roundedAmount, decimals).toString();
   }
 
   function downloadJsonFile() {
