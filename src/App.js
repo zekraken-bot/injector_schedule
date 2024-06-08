@@ -40,7 +40,7 @@ function App() {
 
   const networkChoice = {
     mainnet: "https://ethereum.publicnode.com",
-    polygon: "https://polygon.llamarpc.com",
+    polygon: "https://1rpc.io/matic",
     arbitrum: "https://arb1.arbitrum.io/rpc",
     gnosis: "https://rpc.gnosischain.com",
     zkevm: "https://zkevm-rpc.com",
