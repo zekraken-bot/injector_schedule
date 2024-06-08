@@ -35,16 +35,18 @@ function App() {
     "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": 6, // avalanche
     "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6, // base
     "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": 6, // base USDbC
+    "0x0b2c639c533813f4aa9d7837caf62653d097ff85": 6, // OP USDC
   };
 
   const networkChoice = {
     mainnet: "https://ethereum.publicnode.com",
-    polygon: "https://polygon.llamarpc.com",
-    arbitrum: "https://arbitrum.llamarpc.com",
+    polygon: "https://1rpc.io/matic",
+    arbitrum: "https://arb1.arbitrum.io/rpc",
     gnosis: "https://rpc.gnosischain.com",
     zkevm: "https://zkevm-rpc.com",
     avalanche: "https://avalanche.public-rpc.com",
-    base: "https://developer-access-mainnet.base.org",
+    base: "https://mainnet.base.org",
+    optimism: "https://mainnet.optimism.io",
   };
 
   const chainIds = {
@@ -55,6 +57,7 @@ function App() {
     zkevm: "1101",
     avalanche: "43114",
     base: "8453",
+    optimism: "10",
   };
 
   const [provider, setProvider] = useState(new ethers.providers.JsonRpcProvider(networkChoice.mainnet));
