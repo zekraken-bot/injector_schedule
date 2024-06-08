@@ -46,7 +46,7 @@ function App() {
     zkevm: "https://zkevm-rpc.com",
     avalanche: "https://avalanche.public-rpc.com",
     base: "https://mainnet.base.org",
-    optimism: " https://mainnet.optimism.io",
+    optimism: "https://mainnet.optimism.io",
   };
 
   const chainIds = {
