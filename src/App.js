@@ -45,7 +45,7 @@ function App() {
     gnosis: "https://rpc.gnosischain.com",
     zkevm: "https://zkevm-rpc.com",
     avalanche: "https://avalanche.public-rpc.com",
-    base: "https://developer-access-mainnet.base.org",
+    base: "https://mainnet.base.org",
     optimism: " https://mainnet.optimism.io",
   };
 
