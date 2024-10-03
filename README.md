@@ -1,3 +1,8 @@
+This tool displays tokens to be distributed per week to different gauges in the Balancer ecosystem. The tool will also build the gnosis safe transaction for a new incentive program.
+
+![image](https://github.com/user-attachments/assets/53197faf-4cb4-419e-98c5-72ce595f8f67)
+
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
